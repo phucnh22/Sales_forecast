@@ -1,0 +1,4 @@
+,model,MAPE
+0,ExtraTreesRegressor,0.576
+1,XGBRegressor,0.637
+2,PassiveAggressiveRegressor,1.111
