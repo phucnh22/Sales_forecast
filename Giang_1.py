@@ -51,7 +51,7 @@ df.replace({
 
 # daily sum by level
 df_lev = df.groupby(['store_level', 'date'], as_index=False).sum()
-df_lev['store_level'].value_counts()
+# df_lev['store_level'].value_counts()
 
 # level A
 df_A = df_lev[df_lev['store_level'] == 'A']
@@ -79,8 +79,6 @@ y_train, y_val
 plot_series(y)
 
 # %% use CV to score model after fitting
-
-
 def cv_eval(forecaster):
     cv_mape = []
     mape = MeanAbsolutePercentageError()
@@ -215,6 +213,7 @@ forecaster_PROPHET = Prophet(
     changepoint_prior_scale=0.1,
     seasonality_prior_scale=0.01,
 )
+
 # forecaster_PROPHET.add_country_holidays(country_name='VN')
 forecaster_PROPHET.fit(y_fb)
 forecaster_PROPHET.train_holiday_names
@@ -230,5 +229,12 @@ print(
     '\nPROPHET:', mape_PROPHET
 )
 # SNAIVE:   0.479 
-# ARIMA:    0.324 
+# ARIMA:    0.324
 # PROPHET:  0.267
+
+
+#%% next steps:
+# data transformation: Box-Cox, log...
+# apply for other levels
+# group store by what???
+
