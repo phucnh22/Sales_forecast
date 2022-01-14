@@ -14,10 +14,7 @@ import numpy as np
 from sktime.forecasting.naive import NaiveForecaster
 import warnings
 
-from sktime.forecasting.model_selection import (
-    ExpandingWindowSplitter,
-    ForecastingGridSearchCV,
-    ExpandingWindowSplitter)
+from sktime.forecasting.model_selection import (ExpandingWindowSplitter)
 from sktime.forecasting.model_evaluation import evaluate
 from sktime.forecasting.arima import ARIMA
 from matplotlib.pyplot import plot, yticks
@@ -39,15 +36,13 @@ def get_windows(y, cv):
         test_windows.append(test)
     return train_windows, test_windows
 
-
-
 # %% data
 df = pd.read_pickle('data/df_daily.pkl')
 store_list = df['store_id'].unique()
-df1 = df[['date', 'sales', 'store_level']]
+df = df[['date', 'sales', 'store_level']]
 
 # rename levels for convenience
-df1.reErrorlace({
+df.replace({
     'A++': 'A',
     'A+': 'B',
     'A': 'C',
@@ -55,7 +50,7 @@ df1.reErrorlace({
     'C': 'E'}, inplace=True)
 
 # daily sum by level
-df_lev = df1.groupby(['store_level', 'date'], as_index=False).sum()
+df_lev = df.groupby(['store_level', 'date'], as_index=False).sum()
 df_lev['store_level'].value_counts()
 
 # level A
@@ -68,17 +63,17 @@ ts.plot()
 ts = round(ts/1e6, 3)  # scale data
 ts.index.freq = 'D'
 
-steErrors_ahead = 14
-y = ts[:-steErrors_ahead].ffill()  # forward fill missing values
-y_OOS = ts[-steErrors_ahead:]  # out-of-sample test set
+steps_ahead = 14
+y = ts[:-steps_ahead].ffill()  # forward fill missing values
+y_OOS = ts[-steps_ahead:]  # out-of-sample test set
 
 # %%
 # k-fold rolling cross validation
 k = 4
-ini_window = len(y) - steErrors_ahead*k
-fh = list(range(1, steErrors_ahead+1))
+ini_window = len(y) - steps_ahead*k
+fh = list(range(1, steps_ahead+1))
 cv = ExpandingWindowSplitter(
-    initial_window=ini_window, fh=fh, steError_length=steErrors_ahead)
+    initial_window=ini_window, fh=fh, step_length=steps_ahead)
 y_train, y_val = get_windows(y, cv)
 y_train, y_val
 plot_series(y)
@@ -128,8 +123,6 @@ mape_SNAIVE = round(mape(y_OOS, pred_SNAIVE), 3)
 mape_SNAIVE
 
 # %%
-
-# %%
 # ARIMA
 # Stationarity test
 
@@ -145,10 +138,10 @@ else:
 
 # %% construct param grid
 plot_correlations(y, zero_lag=False, lags=75)
-param_ARIMA_q = [0, 1, 2]  # ACF
-param_ARIMA_Q = [1, 2, 3, 4, 5, 6, 7, 8]  # SACF
 param_ARIMA_p = [0, 1, 2]  # PACF
+param_ARIMA_q = [0, 1, 2]  # ACF
 param_ARIMA_P = [0, 1, 2]  # SPACF
+param_ARIMA_Q = [1, 2, 3, 4, 5, 6, 7, 8]  # SACF
 param_grid_ARIMA = []
 for p in param_ARIMA_p:
     for q in param_ARIMA_q:
@@ -159,7 +152,7 @@ len(param_grid_ARIMA)
 
 # CV grid search
 tuning_mape_ARIMA = []
-for param in param_grid_ARIMA[-5:]:
+for param in param_grid_ARIMA:#[-5:]:
     forecaster_ARIMA = ARIMA(sp=7,
                              order=param[0],
                              seasonal_order=param[1],
@@ -170,9 +163,9 @@ for param in param_grid_ARIMA[-5:]:
     tuning_mape_ARIMA.append(cv_mape)
 
 tuning_results_ARIMA = pd.DataFrame({
-    'param': param_grid_ARIMA[:5],
+    'param': param_grid_ARIMA[:95],
     'mape': tuning_mape_ARIMA
-}).sort_values('mape').reset_index(drop=True)
+}).sort_values('mape')
 best_param_ARIMA = tuning_results_ARIMA.iloc[0, 0]
 
 # final fit & OOS score
@@ -195,8 +188,8 @@ y_test_fb.columns = ['ds', 'y']
 
 # gridsearch
 param_grid = {
-    'changeErroroint_prior_scale': [0.001, 0.01, 0.1, 0.5],
-    'Ponality_prior_scale': [0.01, 0.1, 1.0, 10.0],
+    'changepoint_prior_scale': [0.001, 0.01, 0.1, 0.5],
+    'seasonality_prior_scale': [0.01, 0.1, 1.0, 10.0],
 }
 
 all_params = [dict(zip(param_grid.keys(), v))
@@ -219,11 +212,10 @@ tuning_results.sort_values('mape')
 
 # final PROPHET
 forecaster_PROPHET = Prophet(
-    changeErroroint_prior_scale=0.1,
-    Ponality_prior_scale=0.01,
+    changepoint_prior_scale=0.1,
+    seasonality_prior_scale=0.01,
 )
-forecaster_PROPHET.add_country_holidays(
-    country_name='VN')  # improve from 0.246
+# forecaster_PROPHET.add_country_holidays(country_name='VN')
 forecaster_PROPHET.fit(y_fb)
 forecaster_PROPHET.train_holiday_names
 y_pred_PROPHET = forecaster_PROPHET.predict(y_test_fb)
@@ -233,9 +225,10 @@ mape_PROPHET
 # %%
 plot_correlations(y)
 print(
-    mape_SNAIVE,
-    # mape_ARIMA,
-    mape_ARIMA,
-    mape_PROPHET,
-    seError='\n'
+    '\nSNAIVE:', mape_SNAIVE,
+    '\nARIMA:', mape_ARIMA,
+    '\nPROPHET:', mape_PROPHET
 )
+# SNAIVE:   0.479 
+# ARIMA:    0.324 
+# PROPHET:  0.267

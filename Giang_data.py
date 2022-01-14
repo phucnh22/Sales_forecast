@@ -3,7 +3,7 @@
 import pandas as pd
 
 # transactional data
-fact_order = pd.read_pickle('data/fact_order.pkl')
+fact_order = pd.read_pickle('data/fact_order_full.pkl')
 fact_order.head().T
 cols = [
     'order_id',
