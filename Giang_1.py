@@ -26,16 +26,6 @@ mape = MeanAbsolutePercentageError()
 pd.options.plotting.backend = 'plotly'
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-#
-def get_windows(y, cv):
-    """Generate windows"""
-    train_windows = []
-    test_windows = []
-    for i, (train, test) in enumerate(cv.split(y)):
-        train_windows.append(train)
-        test_windows.append(test)
-    return train_windows, test_windows
-
 # %% data
 df = pd.read_pickle('data/df_daily.pkl')
 store_list = df['store_id'].unique()
@@ -51,7 +41,7 @@ df.replace({
 
 # daily sum by level
 df_lev = df.groupby(['store_level', 'date'], as_index=False).sum()
-# df_lev['store_level'].value_counts()
+df_lev.to_pickle('data/df_lev.pkl')
 
 # level A
 df_A = df_lev[df_lev['store_level'] == 'A']
@@ -74,8 +64,20 @@ ini_window = len(y) - steps_ahead*k
 fh = list(range(1, steps_ahead+1))
 cv = ExpandingWindowSplitter(
     initial_window=ini_window, fh=fh, step_length=steps_ahead)
-y_train, y_val = get_windows(y, cv)
-y_train, y_val
+
+def get_windows(y, cv):
+    """Generate windows"""
+    train_windows = []
+    test_windows = []
+    folds = []
+    for i, (train, test) in enumerate(cv.split(y)):
+        train_windows.append(train)
+        test_windows.append(test)
+        folds.append([train, test])
+    return folds#train_windows, test_windows
+
+cv_folds = get_windows(y, cv)
+cv_folds[0]
 plot_series(y)
 
 # %% use CV to score model after fitting
@@ -90,7 +92,8 @@ def cv_eval(forecaster):
     return cv_mape
 
 
-# %% SNAIVE
+# %%  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# SNAIVE
 param_grid_SNAIVE = ['last', 'mean', 'drift']
 tuning_mape_SNAIVE = []
 
@@ -120,7 +123,7 @@ pred_SNAIVE = tuned_SNAIVE.predict(y_OOS.index)
 mape_SNAIVE = round(mape(y_OOS, pred_SNAIVE), 3)
 mape_SNAIVE
 
-# %%
+# %%~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # ARIMA
 # Stationarity test
 
@@ -177,7 +180,7 @@ forecaster_ARIMA.summary()
 mape_ARIMA = round(mape(y_OOS, y_pred_ARIMA), 3)
 mape_ARIMA
 
-# %%
+# %%~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 # PROPHET
 y_fb = pd.DataFrame(y).reset_index()
 y_fb.columns = ['ds', 'y']
@@ -228,6 +231,8 @@ print(
     '\nARIMA:', mape_ARIMA,
     '\nPROPHET:', mape_PROPHET
 )
+
+## level A
 # SNAIVE:   0.479 
 # ARIMA:    0.324
 # PROPHET:  0.267
@@ -236,5 +241,7 @@ print(
 #%% next steps:
 # data transformation: Box-Cox, log...
 # apply for other levels
-# group store by what???
-
+# use 1 model by level to forecast individual stores 
+# individual model for individual stores
+# Giang: level C
+# Phuc-Thuong: level D
