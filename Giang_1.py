@@ -17,7 +17,6 @@ import warnings
 from sktime.forecasting.model_selection import (ExpandingWindowSplitter)
 from sktime.forecasting.model_evaluation import evaluate
 from sktime.forecasting.arima import ARIMA
-from matplotlib.pyplot import plot, yticks
 from sktime.forecasting.arima import AutoARIMA
 from sktime.performance_metrics.forecasting import MeanAbsoluteError, MeanAbsolutePercentageError
 mae = MeanAbsoluteError()
@@ -34,10 +33,7 @@ df = df[['date', 'sales', 'store_level']]
 # rename levels for convenience
 df.replace({
     'A++': 'A',
-    'A+': 'B',
-    'A': 'C',
-    'B': 'D',
-    'C': 'E'}, inplace=True)
+    'A+': 'A'}, inplace=True)
 
 # daily sum by level
 df_lev = df.groupby(['store_level', 'date'], as_index=False).sum()
@@ -45,6 +41,8 @@ df_lev.to_pickle('data/df_lev.pkl')
 
 # level A
 df_A = df_lev[df_lev['store_level'] == 'A']
+df_B = df_lev[df_lev['store_level'] == 'B']
+df_C = df_lev[df_lev['store_level'] == 'C']
 
 # time series of sales
 ts = df_A.set_index('date')['sales'].rename('Store level A')
@@ -74,10 +72,10 @@ def get_windows(y, cv):
         train_windows.append(train)
         test_windows.append(test)
         folds.append([train, test])
-    return folds#train_windows, test_windows
+    return folds, train_windows, test_windows
 
-cv_folds = get_windows(y, cv)
-cv_folds[0]
+cv_folds, cv_train, cv_test = get_windows(y, cv)
+
 plot_series(y)
 
 # %% use CV to score model after fitting
@@ -85,7 +83,7 @@ def cv_eval(forecaster):
     cv_mape = []
     mape = MeanAbsolutePercentageError()
     for i in range(k):
-        test_set = y[y_val[i]]
+        test_set = y[cv_test[i]]
         y_pred = forecaster.predict(test_set.index)
         cv_mape.append(mape(test_set, y_pred))
     cv_mape = round(np.mean(cv_mape), 3)
@@ -103,7 +101,7 @@ for param in param_grid_SNAIVE:
     # define model
     mod_SNAIVE = NaiveForecaster(sp=7, strategy=param)
     # fit model to training data
-    mod_SNAIVE.fit(y[y_train[0]])
+    mod_SNAIVE.fit(y[cv_train[0]])
     cv_mape_SNAIVE = cv_eval(mod_SNAIVE)
     tuning_mape_SNAIVE.append(cv_mape_SNAIVE)
 tuning_results_SNAIVE = pd.DataFrame({
@@ -158,7 +156,7 @@ for param in param_grid_ARIMA:#[-5:]:
                              order=param[0],
                              seasonal_order=param[1],
                              )
-    forecaster_ARIMA.fit(y[y_train[0]])
+    forecaster_ARIMA.fit(y[cv_train[0]])
     cv_mape = cv_eval(forecaster_ARIMA)
     print(cv_mape, '---',param)
     tuning_mape_ARIMA.append(cv_mape)
@@ -198,10 +196,10 @@ all_params = [dict(zip(param_grid.keys(), v))
 
 tuning_mape_PROPHET = []
 for params in all_params:
-    m = Prophet(**params).fit(y_fb.iloc[y_train[0]])
+    m = Prophet(**params).fit(y_fb.iloc[cv_train[0]])
     cv_mape = []
     for i in range(4):
-        test_set = y_fb.iloc[y_val[i]]
+        test_set = y_fb.iloc[cv_test[i]]
         y_pred = m.predict(test_set[['ds']])
         cv_mape.append(mape(test_set['y'], y_pred['yhat']))
     # mape of each param set
@@ -225,7 +223,6 @@ mape_PROPHET = round(mape(y_test_fb['y'], y_pred_PROPHET['yhat']), 3)
 mape_PROPHET
 
 # %%
-plot_correlations(y)
 print(
     '\nSNAIVE:', mape_SNAIVE,
     '\nARIMA:', mape_ARIMA,
@@ -245,3 +242,20 @@ print(
 # individual model for individual stores
 # Giang: level C
 # Phuc-Thuong: level D
+
+
+
+# %%~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# AutoARIMA
+forecaster_AutoARIMA = AutoARIMA(sp=7,
+                                 max_order=None,
+                                 random=True,
+                                 random_state=123,
+                                 n_fits=10)
+
+# fit & evaluate model
+forecaster_AutoARIMA.fit(y[cv_train[0]])
+cv_mape_AutoARIMA = cv_eval(forecaster_AutoARIMA)
+
+forecaster_AutoARIMA.summary()
+cv_mape_AutoARIMA
