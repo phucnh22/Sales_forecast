@@ -69,7 +69,7 @@ fact_order_daily_sum.to_pickle('data/fact_order_daily_sum.pkl')
 
 # read data
 dim_store = pd.read_csv('data/dim_store.csv')
-
+# dim_store.sort_values('store_level').dropna(subset=['store_level']).to_csv('data/store_by_level.csv')
 # filter data:
 # keep ['Retail', 'Online']
 dim_store_cleaned = dim_store[dim_store['channel'].isin(['Retail', 'Online'])]
@@ -104,6 +104,17 @@ dim_store_cleaned['store_id'] = dim_store_cleaned['store_id'].astype('object')
 
 df_daily = pd.merge(fact_order_daily_sum.reset_index(),
                     dim_store_cleaned, 'inner', 'store_id')
+
+# rename levels for convenience
+df_daily['store_level'].replace({
+    'A++': 'A',
+    'A+': 'A'}, inplace=True)
+
+# drop online store
+df_daily[df_daily['store_id']==451647]
+df_daily = df_daily.query('store_id != 451647')
+
+# save as pickle
 df_daily.to_pickle('data/df_daily.pkl')
 
 
@@ -111,20 +122,3 @@ df_daily.to_pickle('data/df_daily.pkl')
 # df = df_daily
 df_store = pd.read_pickle('data/df_daily.pkl')
 df_store = df_store[['date', 'sales', 'store_level', 'store_id']]
-
-# rename levels for convenience
-df_store['store_level'].replace({
-    'A++': 'A',
-    'A+': 'A'}, inplace=True)
-
-
-# daily sum by level
-df_lev = df_store.groupby(['store_level', 'date'], as_index=False).sum()
-df_lev.to_pickle('data/df_lev.pkl')
-
-# level
-df_A = df_lev[df_lev['store_level'] == 'A'].drop(columns=['store_level'])
-df_B = df_lev[df_lev['store_level'] == 'B'].drop(columns=['store_level'])
-df_C = df_lev[df_lev['store_level'] == 'C'].drop(columns=['store_level'])
-
-
