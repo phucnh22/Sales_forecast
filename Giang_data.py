@@ -122,3 +122,4 @@ df_daily.to_pickle('data/df_daily.pkl')
 # df = df_daily
 df_store = pd.read_pickle('data/df_daily.pkl')
 df_store = df_store[['date', 'sales', 'store_level', 'store_id']]
+df_store[df_store['store_id']==349988]
