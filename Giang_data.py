@@ -100,6 +100,9 @@ dim_store_cleaned = dim_store_cleaned[dim_store_cleaned['store_id'].isin(
 dim_store_cleaned.to_pickle('data/dim_store_cleaned.pkl')
 
 # %% join dim_store to fact_order
+dim_store_cleaned = pd.read_pickle('data/dim_store_cleaned.pkl')
+dim_store_cleaned['store_segment'].unique()
+
 dim_store_cleaned['store_id'] = dim_store_cleaned['store_id'].astype('object')
 
 df_daily = pd.merge(fact_order_daily_sum.reset_index(),
