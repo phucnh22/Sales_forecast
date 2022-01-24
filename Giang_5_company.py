@@ -155,4 +155,5 @@ for store in df_store['store_id'].unique():#[:2]: print(store)
         ignore_index=True)
 
 #%%
-res_whole.to_csv('res_whole.csv')
+# res_whole.to_csv('res_whole.csv')
+res_whole = pd.read_csv('res_whole.csv', index_col=0)
