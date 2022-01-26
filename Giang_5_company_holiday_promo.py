@@ -1,6 +1,9 @@
 # %%
 # imports
-import imp
+from prophet.diagnostics import cross_validation
+from prophet.diagnostics import performance_metrics
+import itertools
+from prophet import Prophet
 from sktime.performance_metrics.forecasting import mean_absolute_scaled_error, mean_absolute_error, mean_absolute_percentage_error
 import pandas as pd
 import numpy as np
@@ -11,10 +14,11 @@ import matplotlib.pyplot as plt
 import holidays
 pd.options.plotting.backend = 'plotly'
 
+
 #%%##########################################################################
 # WHOLE COMPANY
-# adding holidays & promo as df_fouri. variables
-#############################################################################
+# with holidays & promo as exog. variables
+
 df_store = pd.read_pickle('data/df_daily.pkl')
 df_company = df_store.groupby('date').sum()
 train_data = df_company['sales']/1e6
@@ -48,13 +52,12 @@ exog_to_test = df_exog.iloc[-steps_ahead:]
 
 # %%
 # Fit model to the level to find common order
-# Weekly seasonality covered by SARIMAX
 arima_model = auto_arima(
     y=y_to_train,
     exogenous=exog_to_train,
-    D=1,
-    seasonal=True,
-    m=7)
+    D=1, 
+    seasonal=True, m=7 # Weekly seasonality
+    )
 arima_model
 
 # %%
@@ -92,7 +95,7 @@ res_whole_holiday_promo = pd.DataFrame()
 
 #%%##########################################################################
 # LOOP all stores
-for store in df_store['store_id'].unique()[26:]:# print(store)
+for store in df_store['store_id'].unique():  # print(store)
     df_data = df_store[df_store['store_id'] == store].set_index('date')[
         ['sales', 'promo_count']]
     df_data.index.freq = 'D'
@@ -139,6 +142,9 @@ for store in df_store['store_id'].unique()[26:]:# print(store)
     arima_y_forecast = pd.Series(arima_y_forecast,
                                  name='forecast',
                                  index=y_to_test.index)
+    # Random walk
+    RW_y_forecast = pd.Series(
+        y_to_train[-1], name='RW_forecast', index=y_to_test.index)
 
     # metrics
     # in-sample
@@ -150,6 +156,9 @@ for store in df_store['store_id'].unique()[26:]:# print(store)
     mae_OOS = round(mean_absolute_error(y_to_test, arima_y_forecast))
     mape_OOS = round(mean_absolute_percentage_error(
         y_to_test, arima_y_forecast), 3)
+    RW_mae_OOS = round(mean_absolute_error(y_to_test, RW_y_forecast))
+    RW_mape_OOS = round(mean_absolute_percentage_error(
+        y_to_test, RW_y_forecast), 3)
 
     print(f'Store {store}')
     print(f'MAPE: {mape_OOS}',
@@ -158,16 +167,146 @@ for store in df_store['store_id'].unique()[26:]:# print(store)
 
     res_whole_holiday_promo = res_whole_holiday_promo.append({
         'store_id': store,
-        'mape_OOS': mape_OOS,
-        'mape_IS': mape_IS,
-        'mae_OOS': mae_OOS,
-        'mae_IS': mae_IS
-        }, ignore_index=True)
+        'fc_IS': arima_y_fitted,
+        'fc_OOS': arima_y_forecast,
+        'fc_RW': RW_y_forecast,
+        'arima_mape_OOS': mape_OOS,
+        'arima_mape_IS': mape_IS,
+        'arima_mae_OOS': mae_OOS,
+        'arima_mae_IS': mae_IS,
+        'RW_mape_OOS': RW_mape_OOS,
+        'RW_mae_OOS': RW_mae_OOS,
+    }, ignore_index=True)
+# res_whole_holiday_promo.to_csv('res_whole_holiday_promo.csv')
+# res_whole_holiday_promo = pd.read_csv('res_whole_holiday_promo.csv', index_col=0)
+
 
 # %%
-# res_whole.to_csv('res_whole_holiday_promo.csv')
-res_whole_holiday_promo = pd.read_csv('res_whole_holiday_promo.csv', index_col=0)
-res_whole = pd.read_csv('res_whole.csv', index_col=0)
 
-res_whole_holiday_promo.mean()
-res_whole.mean()
+px.scatter(fb_df, 'promo_count', 'sales')
+px.scatter(fb_df, 'holiday', 'sales')
+fb_df[['sales', 'promo_count']].plot()
+
+
+#%%##########################################################################
+# PROPHET
+#############################################################################
+
+fb_df = pd.concat([df_company[['sales', 'promo_count']], ts_holiday], axis=1)
+fb_df['sales'] = fb_df['sales']/1e6
+fb_df['holiday'] = fb_df['holiday'].fillna(False).astype('bool')
+fb_df = fb_df.reset_index().rename({'date': 'ds', 'sales': 'y'}, axis=1)
+fb_train = fb_df.iloc[:-steps_ahead]
+fb_test = fb_df.iloc[-steps_ahead:]
+
+param_grid = {
+    'changepoint_prior_scale': [0.001, 0.01, 0.1, 0.5],
+    'seasonality_prior_scale': [0.01, 0.1, 1.0, 10.0],
+}
+
+all_params = [dict(zip(param_grid.keys(), v))
+              for v in itertools.product(*param_grid.values())]
+
+# %%
+mape_PROPHET = []
+for params in all_params:
+    # set up model
+    m = Prophet(**params)
+    m.add_regressor('holiday')
+    m.add_regressor('promo_count')
+    m.fit(fb_train)
+    # set up CV
+    df_cv = cross_validation(
+        m,
+        initial=(str(fb_train.shape[0]-steps_ahead*4)+' days'),
+        period='7 days', horizon='14 days')
+    # evaluate
+    df_p = performance_metrics(df_cv)
+    mape_PROPHET.append(df_p['mape'].values[-1])
+
+# Find the best parameters
+tuning_results = pd.DataFrame(all_params)
+tuning_results['mape'] = mape_PROPHET
+tuning_results.sort_values('mape', inplace=True)
+
+# %% final PROPHET
+fb_model = Prophet(
+    changepoint_prior_scale=tuning_results.loc[0, 'changepoint_prior_scale'],
+    seasonality_prior_scale=tuning_results.loc[0, 'seasonality_prior_scale'],
+)
+
+fb_model.fit(fb_df)
+fb_fc = fb_model.predict(fb_test)
+mape_PROPHET = round(mape(y_test_fb['y'], fb_fc['yhat']), 3)
+mape_PROPHET
+
+# %%
+res_fb = pd.DataFrame()
+
+#%%##########################################################################
+# LOOP all stores
+for store in df_store['store_id'].unique():  # print(store)
+    df_data = df_store[df_store['store_id'] == store].set_index('date')[
+        ['sales', 'promo_count']]
+    fb_df = pd.concat([df_data, ts_holiday], axis=1)
+    fb_df['sales'] = fb_df['sales']/1e6
+    fb_df['holiday'] = fb_df['holiday'].fillna(False).astype('bool')
+    fb_df = fb_df.dropna().reset_index().rename(
+        {'date': 'ds', 'sales': 'y'}, axis=1)
+    fb_train = fb_df.iloc[:-steps_ahead]
+    fb_test = fb_df.iloc[-steps_ahead:]
+
+    fb_model = Prophet(
+        changepoint_prior_scale=tuning_results.loc[0,'changepoint_prior_scale'],
+        seasonality_prior_scale=tuning_results.loc[0,'seasonality_prior_scale'],
+    )
+    fb_model.add_regressor('holiday')
+    fb_model.add_regressor('promo_count')
+    fb_model.fit(fb_train)
+    fb_fc = fb_model.predict(fb_test)
+
+    # metrics
+    fb_mae_OOS = round(mean_absolute_error(fb_test['y'], fb_fc['yhat']))
+    fb_mape_OOS = round(mean_absolute_percentage_error(
+        fb_test['y'], fb_fc['yhat']), 3)
+
+    print(f'Store {store}')
+    print(f'MAPE: {fb_mape_OOS}',
+          f'MAE: {fb_mae_OOS}\n',
+          sep='\n')
+
+    res_fb = res_fb.append({
+        'store_id': store,
+        'fb_fc': fb_fc['yhat'],
+        'fb_mape_OOS': fb_mape_OOS,
+        'fb_mae_OOS': fb_mae_OOS,
+    }, ignore_index=True)
+
+# res_fb.to_csv('res_fb.csv')
+# res_fb = pd.read_csv('res_fb.csv')
+
+# %%
+res = pd.merge(res_fb.set_index('store_id')['fb_mape_OOS'],
+               res_whole_holiday_promo.set_index(
+                   'store_id')[['RW_mape_OOS', 'arima_mape_OOS']],
+               'inner', left_index=True, right_index=True).reset_index()
+
+
+# %%
+fig = res[['fb_mape_OOS',
+        #    'RW_mape_OOS',
+           'arima_mape_OOS'
+           ]].plot()
+
+# RW_mean = round(res['RW_mape_OOS'].mean(), 3)
+# fig.add_hline(y=RW_mean, line_dash="dot", line_color='red',
+#               annotation_text=str(RW_mean))
+
+arima_mean = round(res['arima_mape_OOS'].mean(), 3)
+fig.add_hline(y=arima_mean, line_dash="dot", line_color='green',
+              annotation_text=str(arima_mean))
+
+fb_mean = round(res['fb_mape_OOS'].mean(), 3)
+fig.add_hline(y=fb_mean, line_dash="dot", line_color='blue',
+              annotation_text=str(fb_mean),
+              annotation_position="bottom right")
