@@ -178,7 +178,7 @@ for store in df_store['store_id'].unique():  # print(store)
         'RW_mae_OOS': RW_mae_OOS,
     }, ignore_index=True)
 # res_whole_holiday_promo.to_csv('res_whole_holiday_promo.csv')
-# res_whole_holiday_promo = pd.read_csv('res_whole_holiday_promo.csv', index_col=0)
+# res_whole_holiday_promo = pd.read_csv('results/res_whole_holiday_promo.csv', index_col=0)
 
 
 # %%
@@ -283,7 +283,7 @@ for store in df_store['store_id'].unique():  # print(store)
     }, ignore_index=True)
 
 # res_fb.to_csv('res_fb.csv')
-# res_fb = pd.read_csv('res_fb.csv')
+# res_fb = pd.read_csv('results/res_fb.csv')
 
 # %%
 res = pd.merge(res_fb.set_index('store_id')['fb_mape_OOS'],
@@ -294,13 +294,13 @@ res = pd.merge(res_fb.set_index('store_id')['fb_mape_OOS'],
 
 # %%
 fig = res[['fb_mape_OOS',
-        #    'RW_mape_OOS',
+           'RW_mape_OOS',
            'arima_mape_OOS'
            ]].plot()
 
-# RW_mean = round(res['RW_mape_OOS'].mean(), 3)
-# fig.add_hline(y=RW_mean, line_dash="dot", line_color='red',
-#               annotation_text=str(RW_mean))
+RW_mean = round(res['RW_mape_OOS'].mean(), 3)
+fig.add_hline(y=RW_mean, line_dash="dot", line_color='red',
+              annotation_text=str(RW_mean))
 
 arima_mean = round(res['arima_mape_OOS'].mean(), 3)
 fig.add_hline(y=arima_mean, line_dash="dot", line_color='green',
