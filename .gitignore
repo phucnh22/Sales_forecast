@@ -3,3 +3,5 @@
 /archive/
 /sample_code/
 .ipynb_checkpoints/notes-checkpoint.ipynb
+.ipynb_checkpoints/*
+.ipynb_checkpoints/Forecast_5-checkpoint.ipynb
