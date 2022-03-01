@@ -3,23 +3,31 @@
 import pandas as pd
 
 # transactional data
+# read raw data
 fact_order = pd.read_pickle('data/fact_order_full.pkl')
 fact_order.head().T
-cols = [
-    'order_id',
-    'actual_revenue',
-    'store_id',
-    'is_promotion',
-    'created_at', ]
 
+# extract relevant columns
+cols = [
+    'order_id', 
+    'actual_revenue', # order value after subtracting promotions, discounts...
+    'store_id', # store from which the order originated
+    # 'is_promotion', 
+    'created_at', # timestamp of the order
+    ]
+
+# filter retail orders (those >20mil are wholesale)
 fact_order_cleaned = (fact_order
                       .loc[fact_order['actual_revenue'] <= 20000000, cols]
                       .set_index('order_id')
                       .dropna())
+
+# specify correct data types
 fact_order_cleaned = fact_order_cleaned.astype({'store_id': 'object',
-                                                'is_promotion': 'bool',
+                                                # 'is_promotion': 'bool',
                                                 'created_at': 'datetime64'})
 
+# trim data to selected days
 fact_order_cleaned = fact_order_cleaned.loc[fact_order_cleaned['created_at'].between(
     pd.Timestamp('2017-08-01'), pd.Timestamp('2021-02-01')), :].sort_values('created_at')
 
